@@ -6,12 +6,52 @@
   <title>Guaraná da Amazônia — POS (PWA)</title>
   <meta name="theme-color" content="#0b6e4f" />
   <!-- Manifest e Service Worker serão criados dinamicamente para manter tudo em um único arquivo. -->
+  <script src="script.js"></script>
   <link rel="stylesheet" href="style.css">
   <script src="jsPDF-loader.js"></script>
 </head>
 <body>
+  <style>
+      /* Evita overflow horizontal e vaza de tabela */
+      .produtos-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 15px;
+        table-layout: auto;
+        overflow-x: auto;
+        display: block;
+        max-width: 100%;
+      }
+      .produtos-table th, .produtos-table td {
+        white-space: nowrap;
+      }
+      @media (max-width: 900px) {
+        .produtos-table {
+          display: block;
+          overflow-x: auto;
+          max-width: 100vw;
+        }
+      }
+      @media (max-width: 600px) {
+        .produtos-table {
+          font-size: 13px;
+        }
+      }
+    /* Oculta o status da impressora no topo */
+    #printerStatus { display: none !important; }
+  </style>
+  <style>
+    /* Oculta os cards de KPIs da parte superior */
+    .kpi-mini { display: none !important; }
+  </style>
   <header>
     <div class="wrap" style="display:flex;align-items:center;gap:16px">
+      <div id="miniRelatorio" style="display:flex;gap:18px;align-items:center;margin-right:32px;">
+        <div class="kpi-mini"><span>Receita</span><b id="miniKpiRevenue">R$ 0,00</b></div>
+        <div class="kpi-mini"><span>Vendas</span><b id="miniKpiSalesCount">0</b></div>
+        <div class="kpi-mini"><span>Ticket Médio</span><b id="miniKpiAvg">R$ 0,00</b></div>
+      </div>
       <div class="brand">
   <!-- Logo removida -->
         <div>
@@ -22,6 +62,45 @@
       <div class="actions" style="margin-left:auto">
   <span id="printerStatus" class="pill warn" style="cursor:pointer;" title="Clique para conectar">🖨️ Impressora: desconectada</span>
         <button id="btnInstall" class="btn secondary" hidden>Instalar App</button>
+        <script>
+        // Permitir conexão Bluetooth ao clicar no status da impressora
+        document.addEventListener('DOMContentLoaded', function() {
+          var printerStatus = document.getElementById('printerStatus');
+          if (printerStatus) {
+            printerStatus.addEventListener('click', function() {
+              if (typeof connectPrinter === 'function') connectPrinter();
+            });
+          }
+        });
+        </script>
+<script>
+// Botões de limpeza de dados
+document.addEventListener('DOMContentLoaded', function() {
+  const btnLimparDados = document.getElementById('btnLimparDados');
+  const btnLimparProdutos = document.getElementById('btnLimparProdutos');
+  if (btnLimparDados) {
+    btnLimparDados.onclick = function() {
+      if (confirm('Tem certeza que deseja apagar todos os dados do app (exceto produtos)? Esta ação não pode ser desfeita!')) {
+        // Remove todas as chaves do localStorage, exceto products
+        const produtos = localStorage.getItem('products');
+        localStorage.clear();
+        if (produtos) localStorage.setItem('products', produtos);
+        alert('Dados apagados com sucesso!');
+        location.reload();
+      }
+    };
+  }
+  if (btnLimparProdutos) {
+    btnLimparProdutos.onclick = function() {
+      if (confirm('Tem certeza que deseja apagar todos os produtos? Esta ação não pode ser desfeita!')) {
+        localStorage.removeItem('products');
+        alert('Produtos apagados com sucesso!');
+        location.reload();
+      }
+    };
+  }
+});
+</script>
       </div>
     </div>
     <div class="wrap" style="display:flex;justify-content:center;">
@@ -76,6 +155,83 @@
           <span>Total:</span> <b id="carrinhoTotal">R$ 0,00</b>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;">
+            <label for="clienteCompra" style="font-size:14px;">Cliente:</label>
+            <select id="clienteCompra" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;min-width:120px;"></select>
+            <button id="btnNovoCliente" type="button" class="btn-modern">Novo Cliente</button>
+          </div>
+        </div>
+        <style>
+          .kpi-mini {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            background: #f8faf9;
+            border-radius: 8px;
+            padding: 8px 16px;
+            box-shadow: 0 1px 6px #0b6e4f11;
+            border: 1.5px solid #e3ebe8;
+            min-width: 90px;
+            font-size: 13px;
+            margin: 0 0 0 0;
+          }
+          .kpi-mini span { color: #0b6e4f; font-size: 12px; font-weight: 600; letter-spacing: 0.2px; }
+          .kpi-mini b { font-size: 18px; margin: 2px 0; color: #1fc98e; font-weight: 800; letter-spacing: 0.5px; }
+        </style>
+<script>
+// Atualiza mini relatório superior
+function atualizarMiniRelatorio() {
+  let vendas = [];
+  try { vendas = JSON.parse(localStorage.getItem('sales')||'[]'); } catch {}
+  let receita = 0, totalVendas = vendas.length, ticket = 0;
+  vendas.forEach(v => { receita += v.total||0; });
+  ticket = totalVendas ? receita/totalVendas : 0;
+  if (document.getElementById('miniKpiRevenue')) document.getElementById('miniKpiRevenue').textContent = BRL.format(receita);
+  if (document.getElementById('miniKpiSalesCount')) document.getElementById('miniKpiSalesCount').textContent = totalVendas;
+  if (document.getElementById('miniKpiAvg')) document.getElementById('miniKpiAvg').textContent = BRL.format(ticket);
+}
+document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
+// Hook para atualizar junto com runReport
+</script>
+  </script>
+          <input id="novoClienteNome" placeholder="Nome do cliente" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;" />
+          <input id="novoClienteDoc" placeholder="Documento (opcional)" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;" />
+          <button id="btnSalvarCliente" type="button" class="btn-modern" style="width:max-content;">Salvar Cliente</button>
+        </div>
+        <script>
+        // Exibir formulário de novo cliente
+        document.getElementById('btnNovoCliente').onclick = function() {
+          const form = document.getElementById('formNovoCliente');
+          form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+        };
+        // Salvar novo cliente
+        document.getElementById('btnSalvarCliente').onclick = async function() {
+          const nome = document.getElementById('novoClienteNome').value.trim();
+          const doc = document.getElementById('novoClienteDoc').value.trim();
+          if (!nome) return alert('Informe o nome do cliente!');
+          const cliente = { id: 'cli_' + Math.random().toString(36).slice(2,9), name: nome, doc };
+          let clientes = [];
+          if (window.idb && window.openDB) {
+            if (!window.db) window.db = await window.openDB();
+            if (!window.idb) window.idb = idb;
+            clientes = await window.idb.all('customers');
+            await window.idb.set('customers', cliente);
+          } else {
+            try { clientes = JSON.parse(localStorage.getItem('customers')||'[]'); } catch { clientes = []; }
+            clientes.push(cliente);
+            localStorage.setItem('customers', JSON.stringify(clientes));
+          }
+          document.getElementById('formNovoCliente').style.display = 'none';
+          document.getElementById('novoClienteNome').value = '';
+          document.getElementById('novoClienteDoc').value = '';
+          if (typeof preencherClientesCompra === 'function') await preencherClientesCompra();
+          // Seleciona o novo cliente automaticamente
+          setTimeout(function() {
+            const select = document.getElementById('clienteCompra');
+            if (select) select.value = cliente.id;
+          }, 200);
+        };
+        </script>
           <label for="tipoPagamento" style="font-size:14px;">Pagamento:</label>
           <select id="tipoPagamento" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;">
             <option value="Dinheiro">Dinheiro</option>
@@ -84,7 +240,7 @@
             <option value="Cartão de Crédito">Cartão de Crédito</option>
             <option value="Outros">Outros</option>
           </select>
-          <button id="btnFinalizarCompra" class="btn">Finalizar compra</button>
+          <button id="btnFinalizarCompra" class="btn-modern" style="margin-left:10px;">Finalizar compra</button>
         </div>
       </div>
     </section>
@@ -93,17 +249,84 @@
       .catalogo-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; justify-content: space-between; }
       .catalogo-search { flex: 1; max-width: 320px; padding: 8px; border-radius: 8px; border: 1px solid #e3ebe8; }
       .catalogo-grid-novo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 18px; }
-      .catalogo-produto-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(11,110,79,.07); padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: box-shadow .2s; }
-      .catalogo-produto-card:hover { box-shadow: 0 4px 16px rgba(11,110,79,.13); }
-      .catalogo-produto-card img { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; background: #f6f8f7; }
-      .catalogo-produto-card .nome { font-weight: 600; font-size: 15px; text-align: center; }
-      .catalogo-produto-card .preco { color: var(--brand); font-weight: 700; font-size: 15px; }
-      .catalogo-produto-card .estoque { font-size: 13px; color: var(--muted); }
-      .carrinho-novo { background: #f8faf9; border-radius: 12px; padding: 18px; margin-top: 24px; max-width: 400px; }
+      .catalogo-produto-card {
+        background: linear-gradient(135deg, #f8faf9 60%, #e3ebe8 100%);
+        border-radius: 14px;
+        box-shadow: 0 2px 12px rgba(11,110,79,.10);
+        padding: 18px 12px 16px 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        transition: box-shadow .2s, transform .2s;
+        border: 1.5px solid #e3ebe8;
+      }
+      .catalogo-produto-card:hover {
+        box-shadow: 0 6px 24px rgba(11,110,79,.18);
+        transform: translateY(-2px) scale(1.03);
+        border-color: #0b6e4f33;
+      }
+      .catalogo-produto-card img {
+        width: 70px; height: 70px; object-fit: cover; border-radius: 10px; background: #f6f8f7; border: 2px solid #e3ebe8;
+      }
+      .catalogo-produto-card .nome {
+        font-weight: 700; font-size: 16px; text-align: center; color: #0b6e4f;
+      }
+      .catalogo-produto-card .preco {
+        color: #0b6e4f; font-weight: 800; font-size: 16px; letter-spacing: 0.5px;
+      }
+      .catalogo-produto-card .estoque {
+        font-size: 13px; color: #888; margin-bottom: 2px;
+      }
+      .catalogo-produto-card .btn {
+        margin-top: 6px;
+        background: linear-gradient(90deg, #0b6e4f 60%, #1fc98e 100%);
+        color: #fff;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        padding: 7px 18px;
+        font-size: 15px;
+        box-shadow: 0 1px 4px #0b6e4f22;
+        transition: background .2s, box-shadow .2s;
+      }
+      .catalogo-produto-card .btn:hover {
+  background: linear-gradient(90deg, #1fc98e 10%, #0b6e4f 90%);
+        box-shadow: 0 2px 8px #0b6e4f33;
+      }
+      .carrinho-novo {
+        background: linear-gradient(135deg, #f8faf9 70%, #e3ebe8 100%);
+        border-radius: 14px;
+        padding: 22px 18px;
+        margin-top: 24px;
+        max-width: 420px;
+        box-shadow: 0 2px 12px rgba(11,110,79,.08);
+        border: 1.5px solid #e3ebe8;
+      }
       .carrinho-novo h3 { margin-top: 0; }
       .carrinho-novo ul { list-style: none; padding: 0; margin: 0 0 12px 0; }
-      .carrinho-novo li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #e3ebe8; }
-      .carrinho-resumo { margin: 12px 0; font-size: 15px; }
+      .carrinho-novo li { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e3ebe8; font-size: 15px; }
+      .carrinho-novo li:last-child { border-bottom: none; }
+      .carrinho-resumo { margin: 14px 0; font-size: 16px; font-weight: 500; color: #0b6e4f; }
+      .kpi {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        background: linear-gradient(90deg, #f8faf9 70%, #e3ebe8 100%);
+        border-radius: 12px;
+        padding: 14px 22px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 6px #0b6e4f11;
+        border: 1.5px solid #e3ebe8;
+        min-width: 140px;
+      }
+      .kpi span { color: #0b6e4f; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
+      .kpi b { font-size: 22px; margin: 2px 0; color: #1fc98e; font-weight: 800; letter-spacing: 0.5px; }
+      .kpi small { color: #888; font-size: 13px; font-weight: 500; }
+      .produtos-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
+      .produtos-table th, .produtos-table td { padding: 7px 10px; border-bottom: 1px solid #e3ebe8; text-align: left; transition: background .15s; }
+      .produtos-table th { background: #f8faf9; font-weight: 700; color: #0b6e4f; }
+      .produtos-table tbody tr:hover { background: #e3ebe8; }
     </style>
     <script>
   // Catálogo visual
@@ -140,11 +363,34 @@
       // Carrinho simples
       let carrinho = [];
       function addProdutoCarrinho(produto) {
-        const idx = carrinho.findIndex(p=>p.sku===produto.sku);
-        if (idx>-1) carrinho[idx].qty++;
-        else carrinho.push({...produto, qty:1});
-        renderCarrinhoNovo();
+  const idx = carrinho.findIndex(p=>p.sku===produto.sku);
+  if (idx>-1) carrinho[idx].qty++;
+  else carrinho.push({...produto, qty:1});
+  // Reduz estoque do produto ao adicionar
+  atualizarEstoqueProduto(produto.sku, -1).then(renderNovoCatalogo);
+  renderCarrinhoNovo();
       }
+
+      // Função para atualizar o estoque do produto
+      async function atualizarEstoqueProduto(sku, delta) {
+        let produtos = [];
+        if (window.idb && window.openDB) {
+          if (!window.db) window.db = await window.openDB();
+          produtos = await window.idb.all('products');
+        } else {
+          try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch { produtos = []; }
+        }
+        const idx = produtos.findIndex(p => p.sku === sku);
+        if (idx > -1) {
+          produtos[idx].stock = Math.max(0, (produtos[idx].stock||0) + delta);
+          if (window.idb && window.openDB) {
+            await window.idb.set('products', produtos[idx]);
+          } else {
+            localStorage.setItem('products', JSON.stringify(produtos));
+          }
+        }
+      }
+
       function renderCarrinhoNovo() {
         const ul = document.getElementById('carrinhoLista');
         ul.innerHTML = '';
@@ -170,8 +416,45 @@
 
       // Geração de cupom em PDF ao finalizar compra
       document.getElementById('btnFinalizarCompra').onclick = async function() {
+
         if (!carrinho.length) return alert('Adicione produtos ao carrinho!');
         const tipoPagamento = document.getElementById('tipoPagamento').value;
+        const clienteSelect = document.getElementById('clienteCompra');
+        const clienteId = clienteSelect && clienteSelect.value ? clienteSelect.value : null;
+        const clienteNome = clienteSelect && clienteSelect.value ? clienteSelect.options[clienteSelect.selectedIndex].text : '';
+
+        // Salvar venda no localStorage
+        let venda;
+        try {
+          // Calcula totais
+          let subtotal = 0;
+          let lucroBruto = 0;
+          carrinho.forEach(item => {
+            subtotal += (item.price||0) * (item.qty||1);
+            lucroBruto += ((item.price||0)-(item.cost||0)) * (item.qty||1);
+          });
+          venda = {
+            id: 'sale_' + Math.random().toString(36).slice(2,9),
+            at: Date.now(),
+            items: carrinho.map(i => ({...i})),
+            subtotal,
+            discount: 0,
+            taxes: 0,
+            total: subtotal,
+            profit: lucroBruto,
+            payment: tipoPagamento,
+            customerId: clienteId,
+            customerName: clienteNome
+          };
+          let vendas = [];
+          try { vendas = JSON.parse(localStorage.getItem('sales')||'[]'); } catch {}
+          vendas.push(venda);
+          localStorage.setItem('sales', JSON.stringify(vendas));
+        } catch (e) {
+          alert('Erro ao salvar venda: ' + (e.message||e));
+          return;
+        }
+
         // Aguarda jsPDF carregar corretamente
         function gerarCupomPDF() {
           let jsPDFref = window.jspdf && window.jspdf.jsPDF ? window.jspdf.jsPDF : (window.jsPDF ? window.jsPDF : null);
@@ -190,17 +473,19 @@
           doc.setFontSize(11);
           doc.text('Data: ' + new Date().toLocaleString('pt-BR'), 15, y);
           y += 8;
+          if (clienteNome) {
+            doc.text('Cliente: ' + clienteNome, 15, y);
+            y += 8;
+          }
           doc.text('Itens:', 15, y);
           y += 7;
-          let subtotal = 0;
           carrinho.forEach(item => {
             doc.text(`${item.name} x${item.qty} - ${BRL.format(item.price*item.qty)}`, 18, y);
             y += 7;
-            subtotal += (item.price||0) * (item.qty||1);
           });
           y += 4;
           doc.setFontSize(12);
-          doc.text('Total: ' + BRL.format(subtotal), 15, y);
+          doc.text('Total: ' + BRL.format(venda.total), 15, y);
           y += 8;
           doc.setFontSize(11);
           doc.text('Pagamento: ' + tipoPagamento, 15, y);
@@ -218,7 +503,37 @@
         // Limpa carrinho
         carrinho = [];
         renderCarrinhoNovo();
+        // Atualiza relatórios se função global existir
+        if (typeof runReport === 'function') runReport();
       };
+      // Preencher o select de clientes ao carregar a página
+      async function preencherClientesCompra() {
+        const select = document.getElementById('clienteCompra');
+        if (!select) return;
+        let clientes = [];
+          try {
+            if (window.idb && window.openDB && typeof window.idb.all === 'function') {
+              if (!window.db) window.db = await window.openDB();
+              clientes = await window.idb.all('customers');
+            } else {
+              clientes = JSON.parse(localStorage.getItem('customers')||'[]');
+            }
+          } catch (e) {
+            clientes = [];
+          }
+          select.innerHTML = '<option value="">(Nenhum)</option>';
+          (clientes||[]).forEach(c => {
+            if (c && c.id && c.name) {
+              const opt = document.createElement('option');
+              opt.value = c.id;
+              opt.textContent = c.name;
+              select.appendChild(opt);
+            }
+          });
+      }
+      document.addEventListener('DOMContentLoaded', preencherClientesCompra);
+        // Atualizar select de clientes após cadastro de novo cliente
+        window.atualizarClientesCompra = preencherClientesCompra;
     </script>
 <script>
 // Função para salvar produto (IndexedDB ou localStorage)
@@ -336,9 +651,7 @@ function conectarImpressoraBluetooth(printerStatus) {
       item.onclick = async () => {
         btList.innerHTML = 'Conectando...';
         try {
-          let server = device.gatt.connected ? device.gatt : await device.gatt.connect();
-          // Se ainda não estiver conectado, tenta conectar novamente
-          if (!server.connected) server = await device.gatt.connect();
+          let server = await device.gatt.connect();
           let service = null, characteristic = null;
           const services = await server.getPrimaryServices();
           for (let s of services) {
@@ -359,51 +672,11 @@ function conectarImpressoraBluetooth(printerStatus) {
           window.bluetoothPrinter = { device, server, service, characteristic };
           if (window.appFeedback) window.appFeedback('Impressora conectada com sucesso!');
           document.body.removeChild(modal);
-          // Reconexão automática
-          let reconnectInterval = null;
-          let reconnecting = false;
-          let reconnectAttempts = 0;
-          const MAX_ATTEMPTS = 5;
-          let avisoDiv = null;
-          async function tryReconnect() {
-            if (device.gatt.connected || reconnecting) return;
-            reconnecting = true;
-            reconnectAttempts++;
-            printerStatus.textContent = '🖨️ Reconectando...';
-            printerStatus.classList.remove('success','info');
-            printerStatus.classList.add('warn');
-            try {
-              await device.gatt.connect();
-              printerStatus.textContent = '🖨️ Impressora: conectada';
-              printerStatus.classList.remove('warn','info');
-              printerStatus.classList.add('success');
-              if (window.appFeedback) window.appFeedback('Reconectado à impressora!');
-              clearInterval(reconnectInterval);
-              reconnectInterval = null;
-              reconnectAttempts = 0;
-              if (avisoDiv) { avisoDiv.remove(); avisoDiv = null; }
-            } catch (e) {
-              if (reconnectAttempts >= MAX_ATTEMPTS) {
-                clearInterval(reconnectInterval);
-                reconnectInterval = null;
-                if (!avisoDiv) {
-                  avisoDiv = document.createElement('div');
-                  avisoDiv.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#fff3cd;color:#856404;padding:14px 22px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.08);z-index:99999;font-size:16px;font-weight:500;';
-                  avisoDiv.innerHTML = 'A conexão Bluetooth com a impressora está instável. Verifique a energia, distância e tente reconectar manualmente.';
-                  document.body.appendChild(avisoDiv);
-                }
-              }
-            } finally {
-              reconnecting = false;
-            }
-          }
           device.addEventListener('gattserverdisconnected', function() {
             printerStatus.textContent = '🖨️ Impressora: desconectada';
             printerStatus.classList.remove('success','info');
             printerStatus.classList.add('warn');
-            if (window.appFeedback) window.appFeedback('Impressora desconectada. Tentando reconectar...');
-            // Tenta reconectar a cada 8 segundos até sucesso ou limite
-            if (!reconnectInterval && reconnectAttempts < MAX_ATTEMPTS) reconnectInterval = setInterval(tryReconnect, 8000);
+            if (window.appFeedback) window.appFeedback('Impressora desconectada. Clique para reconectar.');
           });
         } catch (e) {
           btList.innerHTML = '<span style="color:#c00">Erro ao conectar: ' + (e.message||e) + '</span>';
@@ -537,6 +810,10 @@ document.addEventListener('DOMContentLoaded', function() {
             <input type="number" step="0.01" id="pPrice" required min="0" value="0">
           </div>
           <div class="form-row">
+            <label>Custo do produto (R$)</label>
+            <input type="number" step="0.01" id="pCost" required min="0" value="0">
+          </div>
+          <div class="form-row">
             <label>Estoque</label>
             <input type="number" id="pStock" required min="0" value="0">
           </div>
@@ -559,7 +836,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3>Lista de Produtos</h3>
         <input id="filterProducts" placeholder="Filtrar por nome ou SKU..." />
         <table class="produtos-table">
-          <thead><tr><th>SKU</th><th>Nome</th><th>Preço</th><th>Estoque</th><th></th></tr></thead>
+          <thead><tr><th>SKU</th><th>Nome</th><th></th><th>Preço</th><th>Estoque</th></tr></thead>
           <tbody id="productsBody"></tbody>
         </table>
       </div>
@@ -570,9 +847,10 @@ document.addEventListener('DOMContentLoaded', function() {
       .cadastro-produto-card h2, .lista-produtos-card h3 { margin-top: 0; }
       .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
       .form-actions { display: flex; gap: 12px; margin-top: 10px; }
-      .produtos-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-      .produtos-table th, .produtos-table td { padding: 6px 8px; border-bottom: 1px solid #e3ebe8; text-align: left; }
-      .produtos-table th { background: #f8faf9; }
+      .produtos-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
+      .produtos-table th, .produtos-table td { padding: 7px 10px; border-bottom: 1px solid #e3ebe8; text-align: left; }
+      .produtos-table th { background: #f8faf9; font-weight: 700; color: #0b6e4f; }
+      .produtos-table tbody tr:hover { background: #e3ebe8; }
     </style>
     <script>
       // Preview da imagem
@@ -593,6 +871,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const name = document.getElementById('pName').value.trim();
         const sku = document.getElementById('pSku').value.trim();
         const price = parseFloat(document.getElementById('pPrice').value) || 0;
+        const cost = parseFloat(document.getElementById('pCost').value) || 0;
         const stock = parseInt(document.getElementById('pStock').value) || 0;
         const category = document.getElementById('pCategory').value.trim();
         let image = null;
@@ -607,7 +886,7 @@ document.addEventListener('DOMContentLoaded', function() {
           });
         }
         if (!name || !sku) return alert('Preencha nome e SKU!');
-        const produto = { id: sku, name, sku, price, stock, category, image };
+        const produto = { id: sku, name, sku, price, cost, stock, category, image };
         try {
           if (window.idb && window.openDB) {
             if (!window.db) window.db = await window.openDB();
@@ -652,9 +931,9 @@ document.addEventListener('DOMContentLoaded', function() {
           tr.innerHTML = `
             <td>${produto.sku}</td>
             <td>${produto.name}</td>
+            <td><button class='btn secondary' style='margin-right:8px' onclick='editarProduto("${produto.sku}")'>Editar</button></td>
             <td>${BRL.format(produto.price)}</td>
             <td>${produto.stock||0}</td>
-            <td><button class='btn secondary' onclick='editarProduto("${produto.sku}")'>Editar</button></td>
           `;
           tbody.appendChild(tr);
         });
@@ -698,21 +977,61 @@ document.addEventListener('DOMContentLoaded', function() {
     <section id="relatorios" hidden class="grid cols-2">
       <div class="card">
         <div class="head"><strong>Visão geral</strong></div>
-        <div class="body grid cols-3">
-          <div class="kpi"><span>Receita</span><b id="kpiRevenue">R$ 0,00</b><small id="kpiSalesCount">0 vendas</small></div>
-          <div class="kpi"><span>Lucro</span><b id="kpiProfit">R$ 0,00</b><small id="kpiMargin">Margem 0%</small></div>
-          <div class="kpi"><span>Ticket médio</span><b id="kpiAvg">R$ 0,00</b><small id="kpiPeriod"></small></div>
+        <div class="body grid cols-4">
+          <div class="kpi"><span>Receita</span><b id="kpiRevenue">R$ 0,00</b></div>
+          <div class="kpi"><span>Vendas</span><b id="kpiSalesCount">0</b></div>
+          <div class="kpi"><span>Ticket médio</span><b id="kpiAvg">R$ 0,00</b></div>
+          <div class="kpi"><span>Lucro</span><b id="kpiProfit">R$ 0,00</b></div>
         </div>
       </div>
+<script>
+// Atualiza KPIs da seção de relatórios
+async function atualizarKPIRelatorios() {
+  let vendas = [];
+  try { vendas = JSON.parse(localStorage.getItem('sales')||'[]'); } catch {}
+  let receita = 0, totalVendas = vendas.length, ticket = 0, lucro = 0;
+  // Buscar produtos para obter o custo
+  let produtos = [];
+  try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch {}
+  const mapCusto = {};
+  produtos.forEach(p => { mapCusto[p.sku||p.id] = typeof p.cost === 'number' ? p.cost : (typeof p.custo === 'number' ? p.custo : 0); });
+  vendas.forEach(v => {
+    receita += v.total||0;
+    // Se a venda já tem o campo 'profit', usa ele diretamente
+    if (typeof v.profit === 'number') {
+      lucro += v.profit;
+    } else if (v.items && Array.isArray(v.items)) {
+      v.items.forEach(item => {
+        const sku = item.sku || item.id;
+        const precoVenda = item.price || item.precoVenda || 0;
+        const qtd = item.qty || item.qtd || 1;
+        const precoCusto = (typeof item.cost === 'number') ? item.cost : (typeof item.precoCusto === 'number' ? item.precoCusto : mapCusto[sku] || 0);
+        if (precoVenda > 0 && precoCusto >= 0) {
+          lucro += (precoVenda - precoCusto) * qtd;
+        }
+      });
+    }
+  });
+  ticket = totalVendas ? receita/totalVendas : 0;
+  if (document.getElementById('kpiRevenue')) document.getElementById('kpiRevenue').textContent = BRL.format(receita);
+  if (document.getElementById('kpiSalesCount')) document.getElementById('kpiSalesCount').textContent = totalVendas;
+  if (document.getElementById('kpiAvg')) document.getElementById('kpiAvg').textContent = BRL.format(ticket);
+  if (document.getElementById('kpiProfit')) document.getElementById('kpiProfit').textContent = BRL.format(lucro);
+}
+document.addEventListener('DOMContentLoaded', atualizarKPIRelatorios);
+// Hook para atualizar junto com runReport
+const oldRunReport = window.runReport;
+window.runReport = function() {
+  if (typeof oldRunReport === 'function') oldRunReport();
+  atualizarKPIRelatorios();
+}
+</script>
       <div class="card">
-        <div class="head">
-          <strong>Filtrar por período</strong>
-          <div class="toolbar">
-            <input type="date" id="fromDate"> a <input type="date" id="toDate">
-            <button id="btnRunReport" class="btn">Gerar</button>
-          </div>
-        </div>
         <div class="body">
+          <div class="toolbar" style="margin-bottom:16px;gap:12px;">
+            <button id="btnLimparDados" class="btn danger">Limpar todos os dados (exceto produtos)</button>
+            <button id="btnLimparProdutos" class="btn danger">Limpar todos os produtos</button>
+          </div>
           <canvas id="chart" height="160"></canvas>
           <div style="margin-top:12px">
             <table>
@@ -799,7 +1118,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <!-- Chart.js para gráficos (cacheado pelo SW) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-  <script src="script.js"></script>
 <script>
 // Navegação entre seções do menu
 document.addEventListener('DOMContentLoaded', function() {
@@ -940,7 +1258,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnFecharCupom) btnFecharCupom.onclick = function() { cupom.style.display = 'none'; };
   }
 });
-</script>
 </script>
 <script>
 // Exibe botão de imprimir venda após finalizar

@@ -1,3 +1,6 @@
+// Torna helpers globais para uso em index.html
+window.idb = idb;
+window.openDB = openDB;
 
 /******************** Utilidades ********************/
 /**
@@ -165,8 +168,24 @@ function productRow(p){
 	return tr;
 }
 function fillProductForm(p){
-	$$('#pName').value=p.name; $$('#pSku').value=p.sku||''; $$('#pPrice').value=p.price||0; $$('#pCost').value=p.cost||0; $$('#pStock').value=p.stock||0; $$('#pCategory').value=p.category||'';
+	$$('#pName').value = p.name;
+	$$('#pSku').value = p.sku || '';
+	$$('#pPrice').value = p.price || 0;
+	$$('#pCost').value = p.cost || 0;
+	$$('#pStock').value = p.stock || 0;
+	$$('#pCategory').value = p.category || '';
 	$$('#btnSaveProduct').dataset.editId = p.id;
+	// Exibir imagem atual, se houver
+	if ($$('#pImagePreview')) {
+		if (p.image) {
+			$$('#pImagePreview').src = p.image;
+			$$('#pImagePreview').style.display = 'block';
+		} else {
+			$$('#pImagePreview').src = '';
+			$$('#pImagePreview').style.display = 'none';
+		}
+	}
+	if ($$('#pImage')) $$('#pImage').value = '';
 }
 async function renderProducts(filter=''){
 	const tbody = $$('#productsBody'); tbody.innerHTML='';
@@ -399,8 +418,10 @@ window.addEventListener('DOMContentLoaded', () => {
 function dayKey(ts){ const d=new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
 function inRange(ts, a, b){ return (!a || ts>=a) && (!b || ts<=b); }
 async function runReport(){
-	const from = $$('#fromDate')?.value ? new Date($$('#fromDate').value+'T00:00').getTime() : null;
-	const to = $$('#toDate')?.value ? new Date($$('#toDate').value+'T23:59:59').getTime() : null;
+	// Sempre usar o mês atual
+	const now = new Date();
+	const from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+	const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
 	const sales = (await idb.all('sales')).filter(s=>inRange(s.at, from, to)).sort((a,b)=>a.at-b.at);
 	const revenue = sales.reduce((s,x)=>s+x.total,0);
 	const profit = sales.reduce((s,x)=>s+x.profit,0);
@@ -410,7 +431,7 @@ async function runReport(){
 	$$('#kpiSalesCount').textContent = `${sales.length} vendas`;
 	$$('#kpiAvg').textContent = BRL.format(avg);
 	$$('#kpiMargin').textContent = `Margem ${(revenue? (profit/revenue*100):0).toFixed(1)}%`;
-	$$('#kpiPeriod').textContent = from||to ? 'Período filtrado' : 'Tudo';
+	$$('#kpiPeriod').textContent = 'Mês atual';
 
 	// Série diária
 	const days = {};
@@ -433,7 +454,7 @@ function drawChart(labels, data){
 	chart = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ label:'Receita diária', data, tension:.25, borderWidth:2, fill:false }] }, options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } } });
 }
 window.addEventListener('DOMContentLoaded', () => {
-	$$('#btnRunReport')?.addEventListener('click', runReport);
+	// Filtros removidos, visão geral sempre mostra o mês atual
 });
 
 /******************** Barcode (quando suportado) ********************/

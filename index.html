@@ -151,7 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3>🛒 Carrinho</h3>
         <ul id="carrinhoLista"></ul>
         <div class="carrinho-resumo">
-          <span>Subtotal:</span> <b id="carrinhoSubtotal">R$ 0,00</b><br>
+          <!-- Subtotal removido -->
+          <span>Lucro estimado:</span> <b id="carrinhoLucro">R$ 0,00</b><br>
           <span>Total:</span> <b id="carrinhoTotal">R$ 0,00</b>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
@@ -214,22 +215,22 @@ document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
           if (window.idb && window.openDB) {
             if (!window.db) window.db = await window.openDB();
             if (!window.idb) window.idb = idb;
-            clientes = await window.idb.all('customers');
             await window.idb.set('customers', cliente);
           } else {
             try { clientes = JSON.parse(localStorage.getItem('customers')||'[]'); } catch { clientes = []; }
+            clientes = clientes.filter(c => c.id !== cliente.id);
             clientes.push(cliente);
             localStorage.setItem('customers', JSON.stringify(clientes));
           }
           document.getElementById('formNovoCliente').style.display = 'none';
           document.getElementById('novoClienteNome').value = '';
           document.getElementById('novoClienteDoc').value = '';
-          if (typeof preencherClientesCompra === 'function') await preencherClientesCompra();
-          // Seleciona o novo cliente automaticamente
-          setTimeout(function() {
+          if (typeof preencherClientesCompra === 'function') {
+            await preencherClientesCompra();
+            // Seleciona o novo cliente imediatamente após atualizar o select
             const select = document.getElementById('clienteCompra');
             if (select) select.value = cliente.id;
-          }, 200);
+          }
         };
         </script>
           <label for="tipoPagamento" style="font-size:14px;">Pagamento:</label>
@@ -240,7 +241,7 @@ document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
             <option value="Cartão de Crédito">Cartão de Crédito</option>
             <option value="Outros">Outros</option>
           </select>
-          <button id="btnFinalizarCompra" class="btn-modern" style="margin-left:10px;">Finalizar compra</button>
+          <button id="btnFinalizarCompra" class="btn-modern" style="margin-left:10px;">Finalizar venda</button>
         </div>
       </div>
     </section>
@@ -360,15 +361,27 @@ document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
           grid.appendChild(card);
         });
       }
-      // Carrinho simples
+
+      // Carrinho simples com persistência
+      const CARRINHO_KEY = 'cart_items';
       let carrinho = [];
+      // Carrega carrinho salvo ao iniciar
+      try {
+        carrinho = JSON.parse(localStorage.getItem(CARRINHO_KEY) || '[]');
+      } catch { carrinho = []; }
+
+      function salvarCarrinho() {
+        localStorage.setItem(CARRINHO_KEY, JSON.stringify(carrinho));
+      }
+
       function addProdutoCarrinho(produto) {
-  const idx = carrinho.findIndex(p=>p.sku===produto.sku);
-  if (idx>-1) carrinho[idx].qty++;
-  else carrinho.push({...produto, qty:1});
-  // Reduz estoque do produto ao adicionar
-  atualizarEstoqueProduto(produto.sku, -1).then(renderNovoCatalogo);
-  renderCarrinhoNovo();
+        const idx = carrinho.findIndex(p=>p.sku===produto.sku);
+        if (idx>-1) carrinho[idx].qty++;
+        else carrinho.push({...produto, qty:1});
+        salvarCarrinho();
+        // Reduz estoque do produto ao adicionar
+        atualizarEstoqueProduto(produto.sku, -1).then(renderNovoCatalogo);
+        renderCarrinhoNovo();
       }
 
       // Função para atualizar o estoque do produto
@@ -395,13 +408,28 @@ document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
         const ul = document.getElementById('carrinhoLista');
         ul.innerHTML = '';
         let subtotal = 0;
-        carrinho.forEach(item => {
+        let lucro = 0;
+        carrinho.forEach((item, idx) => {
           subtotal += (item.price||0) * (item.qty||1);
+          lucro += ((item.price||0) - (item.cost||0)) * (item.qty||1);
           const li = document.createElement('li');
-          li.innerHTML = `<span>${item.name} <small>x${item.qty}</small></span><b>${BRL.format(item.price*item.qty)}</b>`;
+          li.innerHTML = `<span>${item.name} <small>x${item.qty}</small></span><b>${BRL.format(item.price*item.qty)}</b> <button class='btn danger btn-remover-item' data-idx='${idx}' title='Remover item' style='margin-left:10px;padding:2px 8px;font-size:13px;'>✖</button>`;
           ul.appendChild(li);
         });
-        document.getElementById('carrinhoSubtotal').textContent = BRL.format(subtotal);
+        // Adiciona evento para remover item
+        setTimeout(() => {
+          document.querySelectorAll('.btn-remover-item').forEach(btn => {
+            btn.onclick = function() {
+              const idx = parseInt(this.getAttribute('data-idx'));
+              if (!isNaN(idx)) {
+                carrinho.splice(idx, 1);
+                salvarCarrinho();
+                renderCarrinhoNovo();
+              }
+            };
+          });
+        }, 10);
+        document.getElementById('carrinhoLucro').textContent = BRL.format(lucro);
         document.getElementById('carrinhoTotal').textContent = BRL.format(subtotal);
       }
       document.addEventListener('DOMContentLoaded', renderNovoCatalogo);
@@ -983,25 +1011,64 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="kpi"><span>Ticket médio</span><b id="kpiAvg">R$ 0,00</b></div>
           <div class="kpi"><span>Lucro</span><b id="kpiProfit">R$ 0,00</b></div>
         </div>
+        <div class="toolbar" style="margin: 18px 0 0 0; gap: 12px; flex-wrap: wrap; display: flex; align-items: flex-end;">
+          <div>
+            <label for="filtroDataIni">Data inicial:</label>
+            <input type="date" id="filtroDataIni" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;">
+          </div>
+          <div>
+            <label for="filtroDataFim">Data final:</label>
+            <input type="date" id="filtroDataFim" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;">
+          </div>
+          <div>
+            <label for="filtroProduto">Produto:</label>
+            <select id="filtroProduto" style="padding:4px 8px;border-radius:6px;border:1px solid #e3ebe8;min-width:120px;">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <button id="btnAplicarFiltros" class="btn secondary">Filtrar</button>
+        </div>
       </div>
 <script>
-// Atualiza KPIs da seção de relatórios
-async function atualizarKPIRelatorios() {
+// Atualiza KPIs da seção de relatórios com filtros
+async function atualizarKPIRelatoriosComFiltro() {
   let vendas = [];
   try { vendas = JSON.parse(localStorage.getItem('sales')||'[]'); } catch {}
-  let receita = 0, totalVendas = vendas.length, ticket = 0, lucro = 0;
-  // Buscar produtos para obter o custo
   let produtos = [];
   try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch {}
   const mapCusto = {};
   produtos.forEach(p => { mapCusto[p.sku||p.id] = typeof p.cost === 'number' ? p.cost : (typeof p.custo === 'number' ? p.custo : 0); });
-  vendas.forEach(v => {
+
+  // Filtros
+  const dataIni = document.getElementById('filtroDataIni').value;
+  const dataFim = document.getElementById('filtroDataFim').value;
+  const produtoSel = document.getElementById('filtroProduto').value;
+
+  let receita = 0, totalVendas = 0, ticket = 0, lucro = 0;
+  let vendasFiltradas = vendas.filter(v => {
+    let ok = true;
+    if (dataIni) {
+      const dataVenda = new Date(v.at || v.data || v.date || v.createdAt);
+      ok = ok && dataVenda >= new Date(dataIni + 'T00:00:00');
+    }
+    if (dataFim) {
+      const dataVenda = new Date(v.at || v.data || v.date || v.createdAt);
+      ok = ok && dataVenda <= new Date(dataFim + 'T23:59:59');
+    }
+    if (produtoSel) {
+      if (!v.items || !Array.isArray(v.items)) return false;
+      ok = ok && v.items.some(item => (item.sku || item.id) == produtoSel);
+    }
+    return ok;
+  });
+  totalVendas = vendasFiltradas.length;
+  vendasFiltradas.forEach(v => {
     receita += v.total||0;
-    // Se a venda já tem o campo 'profit', usa ele diretamente
     if (typeof v.profit === 'number') {
       lucro += v.profit;
     } else if (v.items && Array.isArray(v.items)) {
       v.items.forEach(item => {
+        if (produtoSel && (item.sku || item.id) != produtoSel) return;
         const sku = item.sku || item.id;
         const precoVenda = item.price || item.precoVenda || 0;
         const qtd = item.qty || item.qtd || 1;
@@ -1018,12 +1085,30 @@ async function atualizarKPIRelatorios() {
   if (document.getElementById('kpiAvg')) document.getElementById('kpiAvg').textContent = BRL.format(ticket);
   if (document.getElementById('kpiProfit')) document.getElementById('kpiProfit').textContent = BRL.format(lucro);
 }
-document.addEventListener('DOMContentLoaded', atualizarKPIRelatorios);
+document.addEventListener('DOMContentLoaded', function() {
+  // Preenche produtos no filtro
+  let produtos = [];
+  try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch {}
+  const select = document.getElementById('filtroProduto');
+  if (select && produtos.length) {
+    produtos.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.sku || p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+  }
+  atualizarKPIRelatoriosComFiltro();
+  document.getElementById('btnAplicarFiltros').onclick = atualizarKPIRelatoriosComFiltro;
+  document.getElementById('filtroDataIni').onchange = atualizarKPIRelatoriosComFiltro;
+  document.getElementById('filtroDataFim').onchange = atualizarKPIRelatoriosComFiltro;
+  document.getElementById('filtroProduto').onchange = atualizarKPIRelatoriosComFiltro;
+});
 // Hook para atualizar junto com runReport
 const oldRunReport = window.runReport;
 window.runReport = function() {
   if (typeof oldRunReport === 'function') oldRunReport();
-  atualizarKPIRelatorios();
+  atualizarKPIRelatoriosComFiltro();
 }
 </script>
       <div class="card">

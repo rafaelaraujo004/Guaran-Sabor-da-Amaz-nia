@@ -2,10 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Guaraná da Amazônia — POS (PWA)</title>
   <meta name="theme-color" content="#0b6e4f" />
   <!-- Manifest e Service Worker serão criados dinamicamente para manter tudo em um único arquivo. -->
+  <script type="module">
+    import { listarProdutos } from './produtos.js';
+    window.listarProdutos = listarProdutos;
+  </script>
   <script src="script.js"></script>
   <link rel="stylesheet" href="style.css">
   <script src="jsPDF-loader.js"></script>
@@ -336,11 +340,15 @@ document.addEventListener('DOMContentLoaded', atualizarMiniRelatorio);
         if (!grid) return;
         grid.innerHTML = '';
         let produtos = [];
-        if (window.idb && window.openDB) {
-          if (!window.db) window.db = await window.openDB();
-          produtos = await window.idb.all('products');
+        if (window.listarProdutos) {
+          produtos = await window.listarProdutos();
         } else {
-          try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch { produtos = []; }
+          if (window.idb && window.openDB) {
+            if (!window.db) window.db = await window.openDB();
+            produtos = await window.idb.all('products');
+          } else {
+            try { produtos = JSON.parse(localStorage.getItem('products')||'[]'); } catch { produtos = []; }
+          }
         }
         if (!produtos.length) {
           grid.innerHTML = '<p style="color:var(--muted);text-align:center;margin:32px 0;">Nenhum produto cadastrado.</p>';
